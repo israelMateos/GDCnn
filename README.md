@@ -1,3 +1,16 @@
+# GDCnn
+
+This project is a fork of [MESCnn](https://github.com/Nicolik/MESCnn), which is an end-to-end pipeline for glomerular Oxford classification of 
+whole slide images. The paper for MESCnn can be found at
+[https://www.sciencedirect.com/science/article/pii/S0169260723004807](https://www.sciencedirect.com/science/article/pii/S0169260723004807),
+and its citation in BibTeX is shown later in this README.
+
+*GDCnn* (*G*lomerular *D*isease *C*lassification by *n*eural *n*etwork) aims
+to adapt MESCnn for a different classification than the Oxford one, implementing
+a 2-step classification of glomeruli, which results in a total of 13 classes.
+
+Below, the README for MESCnn is shown, as GDCnn is currently in development.
+
 # MESCnn
 This repository contains an end-to-end pipeline, which we named *MESCnn* 
 (*MESC* classification by *n*eural *n*etwork), for glomerular Oxford classification of 

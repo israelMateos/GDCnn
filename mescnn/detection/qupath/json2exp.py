@@ -88,8 +88,13 @@ if __name__ == '__main__':
         orig_file = os.path.join(subdir_original, row['filename'])
         cv2.imwrite(orig_file, orig)
 
+        crop_y = orig.shape[0]
+        crop_x = orig.shape[1]
+        target_w = 256
+        target_h = int((target_w / crop_x) * crop_y)
+
         resized_256_file = os.path.join(subdir_resized_256, row['filename'])
-        resized_256_image = cv2.resize(orig, (256, 256), interpolation=cv2.INTER_LINEAR)
+        resized_256_image = cv2.resize(orig, (target_w, target_h), interpolation=cv2.INTER_CUBIC)
         cv2.imwrite(resized_256_file, resized_256_image)
 
     javabridge.kill_vm()

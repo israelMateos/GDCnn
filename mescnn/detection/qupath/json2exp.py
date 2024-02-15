@@ -44,14 +44,10 @@ if __name__ == '__main__':
     os.makedirs(path_to_export_json2exp, exist_ok=True)
 
     path_to_original = os.path.join(path_to_export_json2exp, "Original")
-    path_to_mask = os.path.join(path_to_export_json2exp, "Mask")
-    path_to_crop = os.path.join(path_to_export_json2exp, "Crop")
-    path_to_crop_256 = os.path.join(path_to_export_json2exp, "Crop-256")
+    path_to_resized_256 = os.path.join(path_to_export_json2exp, "Resized-256")
 
     os.makedirs(path_to_original, exist_ok=True)
-    os.makedirs(path_to_mask, exist_ok=True)
-    os.makedirs(path_to_crop, exist_ok=True)
-    os.makedirs(path_to_crop_256, exist_ok=True)
+    os.makedirs(path_to_resized_256, exist_ok=True)
 
     for idx, row in df_crops.iterrows():
         print(f"Iter: {(idx+1):4d} / {len(df_crops):4d}")
@@ -85,37 +81,15 @@ if __name__ == '__main__':
         wsi_id = str(row['image-id'])
         subdir_original = os.path.join(path_to_original, wsi_id)
         os.makedirs(subdir_original, exist_ok=True)
-        subdir_mask = os.path.join(path_to_mask, wsi_id)
-        os.makedirs(subdir_mask, exist_ok=True)
-        subdir_crop = os.path.join(path_to_crop, wsi_id)
-        os.makedirs(subdir_crop, exist_ok=True)
-        subdir_crop_256 = os.path.join(path_to_crop_256, wsi_id)
-        os.makedirs(subdir_crop_256, exist_ok=True)
+        subdir_resized_256 = os.path.join(path_to_resized_256, wsi_id)
+        os.makedirs(subdir_resized_256, exist_ok=True)
 
         orig = cv2.cvtColor(orig, cv2.COLOR_RGB2BGR)
         orig_file = os.path.join(subdir_original, row['filename'])
         cv2.imwrite(orig_file, orig)
 
-        crop_y = orig.shape[0]
-        crop_x = orig.shape[1]
-        rescale_factor_y = ysize / crop_y
-        rescale_factor_x = xsize / crop_x
-
-        mask_file = os.path.join(subdir_mask, row['filename'])
-        mask_image = Image.new('L', (crop_x, crop_y), 0)
-        annotations = dataset_dict[idx]['annotations']
-        for annotation in annotations:
-            polygon = annotation['segmentation']
-            ImageDraw.Draw(mask_image).polygon(polygon[0], outline=1, fill=1)
-        mask = np.array(mask_image)
-        cv2.imwrite(mask_file, mask)
-
-        cmask_file = os.path.join(subdir_crop, row['filename'])
-        masked_image = apply_mask_crop(orig, mask, only_largest=True, smooth_mask=True)
-        cv2.imwrite(cmask_file, masked_image)
-
-        cmask256_file = os.path.join(subdir_crop_256, row['filename'])
-        masked_image_res = cv2.resize(masked_image, (256, 256), interpolation=cv2.INTER_LINEAR)
-        cv2.imwrite(cmask256_file, masked_image_res)
+        resized_256_file = os.path.join(subdir_resized_256, row['filename'])
+        resized_256_image = cv2.resize(orig, (256, 256), interpolation=cv2.INTER_LINEAR)
+        cv2.imwrite(resized_256_file, resized_256_image)
 
     javabridge.kill_vm()

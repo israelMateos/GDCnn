@@ -70,8 +70,8 @@ if __name__ == '__main__':
 
                 s, ext, id_name, path_to_image = path_image_data(image.image_name, path_to_wsi, add_dir_mrxs=True)
                 if os.path.exists(path_to_image):
-                    tile_offset_x = 100
-                    tile_offset_y = 100
+                    tile_offset_x = 300
+                    tile_offset_y = 300
                     for glomerulus in shapes['Glomerulus']:
                         xg, yg = glomerulus.exterior.coords.xy
                         xg, yg = np.array(xg, dtype=np.int32), np.array(yg, dtype=np.int32)

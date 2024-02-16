@@ -1,16 +1,13 @@
 import os
 import numpy as np
 import torch
-from PIL import Image
 import pandas as pd
 
-from mescnn.classification.gutils.utils import get_proper_device, str2bool
-from mescnn.classification.inference.oxford import binarize, oxfordify
-from mescnn.classification.inference.download import download_classifier
-from mescnn.classification.inference.encoding import mesc_def
-from mescnn.classification.inference.threshold import opt_thr
-from mescnn.classification.inference.config import (GlomeruliTestConfig, GlomeruliTestConfig3,
-                                                  GlomeruliTestConfigViT, GlomeruliTestConfigViT3)
+from mmcls.apis import init_model
+from mmcls.datasets.pipelines import Compose
+from mmcv.parallel import collate, scatter
+
+from mescnn.classification.gutils.utils import get_proper_device
 from mescnn.classification.inference.paths import get_logs_path
 from mescnn.definitions import ROOT_DIR
 
@@ -20,39 +17,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Classifiers Inference for Glomeruli Task')
     parser.add_argument('-r', '--root-path', type=str, help='Root path', default=ROOT_DIR)
     parser.add_argument('-e', '--export-dir', type=str, help='Directory to export report', required=True)
-    parser.add_argument('--netM', type=str, help='Network architecture for M lesion', required=True)
-    parser.add_argument('--netE', type=str, help='Network architecture for E lesion', required=True)
-    parser.add_argument('--netS', type=str, help='Network architecture for S lesion', required=True)
-    parser.add_argument('--netC', type=str, help='Network architecture for C lesion', required=True)
-    parser.add_argument('--vitM', type=str2bool, help='Use ViT for M lesion', default=False)
-    parser.add_argument('--vitE', type=str2bool, help='Use ViT for E lesion', default=False)
-    parser.add_argument('--vitS', type=str2bool, help='Use ViT for S lesion', default=False)
-    parser.add_argument('--vitC', type=str2bool, help='Use ViT for C lesion', default=False)
-    parser.add_argument('--tverM', type=str, help='Training version for M lesion', default="V3")
-    parser.add_argument('--tverE', type=str, help='Training version for M lesion', default="V3")
-    parser.add_argument('--tverS', type=str, help='Training version for M lesion', default="V3")
-    parser.add_argument('--tverC', type=str, help='Training version for M lesion', default="V3")
+    parser.add_argument('--netB', type=str, help='Network architecture for Sclerotic vs. Non-Sclerotic', required=True)
+    parser.add_argument('--netM', type=str, help='Network architecture for 12 classes (Non-sclerotic)', required=True)
     args = parser.parse_args()
 
-    use_vit_dict = {
-        "M": args.vitM,
-        "E": args.vitE,
-        "S": args.vitS,
-        "C": args.vitC,
-    }
-
     net_name_dict = {
+        "B": args.netB,
         "M": args.netM,
-        "E": args.netE,
-        "S": args.netS,
-        "C": args.netC,
-    }
-
-    tver_dict = {
-        "M": args.tverM,
-        "E": args.tverE,
-        "S": args.tverS,
-        "C": args.tverC,
     }
 
     criterion_pr = "min"
@@ -60,9 +31,9 @@ if __name__ == '__main__':
     export_dir = args.export_dir
 
     mesc_log_dir = get_logs_path(root_path)
-    crop_dir = os.path.join(export_dir, "Temp", "json2exp-output", "Crop-256")
+    crop_dir = os.path.join(export_dir, "Temp", "json2exp-output", "Original")
     # report_dir = os.path.join(export_dir, "Report")
-    report_dir = os.path.join(export_dir, "Report", f"M-{args.netM}_E-{args.netE}_S-{args.netS}_C-{args.netC}")
+    report_dir = os.path.join(export_dir, "Report", f"B-{args.netB}_M-{args.netM}")
     os.makedirs(report_dir, exist_ok=True)
 
     wsi_ids = os.listdir(crop_dir)
@@ -71,17 +42,11 @@ if __name__ == '__main__':
 
     wsi_dict = {
         'WSI-ID': [],
-        'M-score': [],
-        'E-score': [],
-        'S-score': [],
-        'C-score': [],
-        'M-ratio': [],
-        'E-ratio': [],
-        'S-ratio': [],
-        'C-ratio': []
+        'most-predicted-class': [],
+        'ratio-most-predicted-class': [],
     }
 
-    output_file_score_csv = os.path.join(report_dir, "Oxford.csv")
+    output_file_summary_csv = os.path.join(report_dir, "summary.csv")
 
     for wsi_id in wsi_ids:
         output_file_csv = os.path.join(report_dir, f"{wsi_id}.csv")
@@ -89,110 +54,113 @@ if __name__ == '__main__':
 
         mesc_dict = {
             'filename': [],
-            'M': [],
-            'E': [],
-            'S': [],
-            'C': [],
+            'predicted-class': [],
 
-            'M-bin': [],
-            'E-bin': [],
-            'S-bin': [],
-            'C-bin': [],
+            'NoSclerotic-prob': [],
+            'Sclerotic-prob': [],
 
-            'M-prob': [],
-            'E-prob': [],
-            'S-prob': [],
-            'C-prob': [],
+            'ABMGN-prob': [],
+            'ANCA-prob': [],
+            'C3-GN-prob': [],
+            'CryoglobulinemicGN-prob': [],
+            'DDD-prob': [],
+            'Fibrillary-prob': [],
+            'IAGN-prob': [],
+            'IgAGN-prob': [],
+            'MPGN-prob': [],
+            'Membranous-prob': [],
+            'PGNMID-prob': [],
+            'SLEGN-IV-prob': [],
         }
 
-        for target in "MESC":
-            target_prob = f"{target}-prob"
-            target_bin = f"{target}-bin"
+        # Model 1: Sclerotic vs. Non-Sclerotic
+        net_name = net_name_dict["B"]
+        net_path = os.path.join(mesc_log_dir, 'binary', net_name, f'{net_name}_B_ckpt.pth')
+        config_path = os.path.join(mesc_log_dir, 'binary', net_name, f'{net_name}_B_config.py')
 
-            if use_vit_dict[target]:
-                config = GlomeruliTestConfigViT() if target in ['E', 'C'] else GlomeruliTestConfigViT3()
-                net_type = "vit"
-            else:
-                config = GlomeruliTestConfig() if target in ['E', 'C'] else GlomeruliTestConfig3()
-                net_type = "cnn"
+        device = get_proper_device()
+        bin_model = init_model(config_path, net_path, device=device)
 
-            net_fold = os.path.join(mesc_log_dir, net_type)
-            net_name = net_name_dict[target]
-            train_version = tver_dict[target]
+        # Model 2: 12 classes
+        net_name = net_name_dict["M"]
+        net_path = os.path.join(mesc_log_dir, '12classes', net_name, f'{net_name}_M_ckpt.pth')
+        config_path = os.path.join(mesc_log_dir, '12classes', net_name, f'{net_name}_M_config.py')
+        
+        mult_model = init_model(config_path, net_path, device=device)
+        
+        images_list = os.listdir(prediction_dir)
+        images_list = [os.path.join(prediction_dir, f) for f in images_list if f.endswith(".jpeg")]
+        for image_path in images_list:
+            # Build the data pipeline
+            data = dict(img_info=dict(filename=image_path), img_prefix=None)
+            pipeline = bin_model.cfg.data.test.pipeline
+            comp_pipeline = Compose(pipeline)
+            data = comp_pipeline(data)
+            data = collate([data], samples_per_gpu=1)
+            if next(bin_model.parameters()).is_cuda:
+                # Scatter to specified GPU
+                data = scatter(data, [device])[0]
 
-            net_path = os.path.join(net_fold, 'holdout', f'{net_name}_{target}_{train_version}.pth')
-            if not os.path.exists(net_path):
-                print(f"Path: {net_path} not found!")
-                model_path = download_classifier(net_name, target, train_version)
-                print(f"Downloaded: {model_path}")
-            else:
-                print(f"Path: {net_path} found!")
-            net = torch.load(net_path)
-            device = get_proper_device()
-
-            net.eval()
-            net = net.to(device)
-
-            images_list = os.listdir(prediction_dir)
-            images_list = [os.path.join(prediction_dir, f) for f in images_list if f.endswith(".jpeg")]
-
-            if target in ['E', 'C']:
-                threshold = opt_thr[net_type][target][train_version][net_name]
-            else:
-                threshold = None
-
+            # Forward the sclerotic vs. non-sclerotic model
             with torch.no_grad():
-                for image_path in images_list:
-                    image = Image.open(image_path)
-                    image = config.transform(image)
-                    image = torch.unsqueeze(image, 0)
-                    image = image.to(device)
-                    outputs = net(image)
+                scores = bin_model(return_loss=False, **data)
+            # Collect the predicted class and the scores
+            pred_label = np.argsort(scores, axis=1)[0][::-1]
+            pred_class = bin_model.CLASSES[pred_label[0]][3:]
+            scores = scores[0]
+            mesc_dict['NoSclerotic-prob'].append(scores[0])
+            mesc_dict['Sclerotic-prob'].append(scores[1])
 
-                    if target in ['E', 'C']:
-                        predictions = outputs[:, 1] > threshold
-                    else:
-                        _, predictions = torch.max(outputs, 1)
-
-                    outputs = outputs.cpu().numpy()
-                    prob_out = outputs[:, -1]
-                    prob_out = 1 / (1 + np.exp(-prob_out))
-                    int_pred = predictions.cpu().numpy().item()
-                    label_pred = mesc_def[target][int_pred]
-                    if label_pred in ['yesC', 'yesE', 'SGS']:
-                        print(f"[lesion] label pred: {label_pred}")
-
-                    if target == 'M':
-                        mesc_dict['filename'].append(image_path)
-
-                    bin_int_pred = binarize(int_pred, target)
-                    print(f"Image Path: {image_path}, threshold: {threshold}, "
-                          f"output-pred: {int_pred:d}, binarized-output-pred: {bin_int_pred:d}, "
-                          f"output-label: {label_pred}, "
-                          f"prob_out: {prob_out.item():.5f}")
-
-                    mesc_dict[target_bin].append(bin_int_pred)
-                    mesc_dict[target].append(label_pred)
-                    mesc_dict[target_prob].append(f"{prob_out.item():.5f}")
+            if pred_class == "Sclerotic":
+                # Append NaNs for the 12 classes
+                mesc_dict['ABMGN-prob'].append(np.nan)
+                mesc_dict['ANCA-prob'].append(np.nan)
+                mesc_dict['C3-GN-prob'].append(np.nan)
+                mesc_dict['CryoglobulinemicGN-prob'].append(np.nan)
+                mesc_dict['DDD-prob'].append(np.nan)
+                mesc_dict['Fibrillary-prob'].append(np.nan)
+                mesc_dict['IAGN-prob'].append(np.nan)
+                mesc_dict['IgAGN-prob'].append(np.nan)
+                mesc_dict['MPGN-prob'].append(np.nan)
+                mesc_dict['Membranous-prob'].append(np.nan)
+                mesc_dict['PGNMID-prob'].append(np.nan)
+                mesc_dict['SLEGN-IV-prob'].append(np.nan)
+            else:
+                # Forward the 12 classes model
+                with torch.no_grad():
+                    scores = mult_model(return_loss=False, **data)
+                # Collect the predicted class and the scores
+                pred_label = np.argsort(scores, axis=1)[0][::-1]
+                pred_class = mult_model.CLASSES[pred_label[0]][3:]
+                scores = scores[0]
+                mesc_dict['ABMGN-prob'].append(scores[0])
+                mesc_dict['ANCA-prob'].append(scores[1])
+                mesc_dict['C3-GN-prob'].append(scores[2])
+                mesc_dict['CryoglobulinemicGN-prob'].append(scores[3])
+                mesc_dict['DDD-prob'].append(scores[4])
+                mesc_dict['Fibrillary-prob'].append(scores[5])
+                mesc_dict['IAGN-prob'].append(scores[6])
+                mesc_dict['IgAGN-prob'].append(scores[7])
+                mesc_dict['MPGN-prob'].append(scores[8])
+                mesc_dict['Membranous-prob'].append(scores[9])
+                mesc_dict['PGNMID-prob'].append(scores[10])
+                mesc_dict['SLEGN-IV-prob'].append(scores[11])
+            
+            mesc_dict['filename'].append(image_path)
+            mesc_dict['predicted-class'].append(pred_class)
 
         mesc_df = pd.DataFrame(data=mesc_dict)
-
-        for target in "MESC":
-            target_bin = f"{target}-bin"
-            target_score = f"{target}-score"
-            target_ratio = f"{target}-ratio"
-
-            target_mean = np.mean(mesc_dict[target_bin])
-            target_sum = np.sum(mesc_dict[target_bin])
-            target_len = len(mesc_dict[target_bin])
-            target_oxford = oxfordify(target_mean, target)
-
-            if target == 'M':
-                wsi_dict['WSI-ID'].append(wsi_id)
-            wsi_dict[target_score].append(target_oxford)
-            wsi_dict[target_ratio].append(f"{target_sum} | {target_len}")
-
         mesc_df.to_csv(output_file_csv, sep=';', index=False)
 
+        # Save each WSI's results
+        most_predicted_class = mesc_df['predicted-class'].mode().values[0]
+        count_most_predicted_class = mesc_df[mesc_df['predicted-class'] == most_predicted_class].shape[0]
+        total_crops = mesc_df.shape[0]
+
+        wsi_dict['WSI-ID'].append(wsi_id)
+        wsi_dict['most-predicted-class'].append(most_predicted_class)
+        wsi_dict['ratio-most-predicted-class'].append(f'{count_most_predicted_class} | {total_crops}')
+
+
     wsi_df = pd.DataFrame(data=wsi_dict)
-    wsi_df.to_csv(output_file_score_csv, sep=';', index=False)
+    wsi_df.to_csv(output_file_summary_csv, sep=';', index=False)

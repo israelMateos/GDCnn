@@ -18,12 +18,16 @@ if __name__ == '__main__':
     parser.add_argument('-r', '--root-path', type=str, help='Root path', default=ROOT_DIR)
     parser.add_argument('-e', '--export-dir', type=str, help='Directory to export report', required=True)
     parser.add_argument('--netB', type=str, help='Network architecture for Sclerotic vs. Non-Sclerotic', required=True)
-    parser.add_argument('--netM', type=str, help='Network architecture for 12 classes (Non-sclerotic)', required=True)
+    parser.add_argument('--netM', type=str, help='Network architecture for 12 classes (Non-sclerotic)', required=False)
+    parser.add_argument('--multi', action='store_true', help='Use 12-class classification after Sclerotic vs. Non-Sclerotic classification', default=False)
     args = parser.parse_args()
+
+    if args.multi and args.netM is None:
+        parser.error("--multi requires --netM")
 
     net_name_dict = {
         "B": args.netB,
-        "M": args.netM,
+        "M": args.netM if args.multi else None,
     }
 
     criterion_pr = "min"
@@ -82,11 +86,12 @@ if __name__ == '__main__':
         bin_model = init_model(config_path, net_path, device=device)
 
         # Model 2: 12 classes
-        net_name = net_name_dict["M"]
-        net_path = os.path.join(mesc_log_dir, '12classes', net_name, f'{net_name}_M_ckpt.pth')
-        config_path = os.path.join(mesc_log_dir, '12classes', net_name, f'{net_name}_M_config.py')
-        
-        mult_model = init_model(config_path, net_path, device=device)
+        if args.multi:
+            net_name = net_name_dict["M"]
+            net_path = os.path.join(mesc_log_dir, '12classes', net_name, f'{net_name}_M_ckpt.pth')
+            config_path = os.path.join(mesc_log_dir, '12classes', net_name, f'{net_name}_M_config.py')
+            
+            mult_model = init_model(config_path, net_path, device=device)
         
         images_list = os.listdir(prediction_dir)
         images_list = [os.path.join(prediction_dir, f) for f in images_list if f.endswith(".jpeg")]
@@ -111,7 +116,7 @@ if __name__ == '__main__':
             mesc_dict['NoSclerotic-prob'].append(scores[0])
             mesc_dict['Sclerotic-prob'].append(scores[1])
 
-            if pred_class == "Sclerotic":
+            if not args.multi or pred_class == "Sclerotic":
                 # Append NaNs for the 12 classes
                 mesc_dict['ABMGN-prob'].append(np.nan)
                 mesc_dict['ANCA-prob'].append(np.nan)

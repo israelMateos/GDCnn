@@ -37,13 +37,8 @@ class PathWSI:
 
 
 def get_test_wsis():
-    return [
-        PathWSI.MESCnn_WSI_BARI,
-        # PathWSI.MESCnn_WSI_BARI_OPENSLIDE,
-        PathWSI.MESCnn_WSI_COLOGNE,
-        PathWSI.MESCnn_WSI_COLOGNE_2,
-        PathWSI.MESCnn_WSI_SZEGED
-    ]
+    wsi_formats = ('.scn', '.ome.tiff', '.ome.tif', '.ndpi', '.svs', '.mrxs', '.tif', '.tiff')
+    return [os.path.join(PathWSI.MESCnn_WSI, wsi) for wsi in os.listdir(PathWSI.MESCnn_WSI) if wsi.endswith(wsi_formats)]
 
 
 class GlomerulusDetection(IntEnum):

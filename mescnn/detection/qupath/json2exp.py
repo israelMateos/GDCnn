@@ -2,14 +2,11 @@ import json
 import os
 import logging
 import pandas as pd
-import numpy as np
 import cv2
-from PIL import Image, ImageDraw
 
 import javabridge
 import bioformats
 
-from mescnn.classification.gutils.image import apply_mask_crop
 from mescnn.detection.io.bioformats_reader import BioformatsReader
 from mescnn.detection.io.openslide_reader import OpenslideReader
 from mescnn.detection.qupath.paths import get_reader_type
@@ -44,10 +41,8 @@ if __name__ == '__main__':
     os.makedirs(path_to_export_json2exp, exist_ok=True)
 
     path_to_original = os.path.join(path_to_export_json2exp, "Original")
-    path_to_resized_256 = os.path.join(path_to_export_json2exp, "Resized-256")
 
     os.makedirs(path_to_original, exist_ok=True)
-    os.makedirs(path_to_resized_256, exist_ok=True)
 
     for idx, row in df_crops.iterrows():
         print(f"Iter: {(idx+1):4d} / {len(df_crops):4d}")
@@ -81,20 +76,9 @@ if __name__ == '__main__':
         wsi_id = str(row['image-id'])
         subdir_original = os.path.join(path_to_original, wsi_id)
         os.makedirs(subdir_original, exist_ok=True)
-        subdir_resized_256 = os.path.join(path_to_resized_256, wsi_id)
-        os.makedirs(subdir_resized_256, exist_ok=True)
 
         orig = cv2.cvtColor(orig, cv2.COLOR_RGB2BGR)
         orig_file = os.path.join(subdir_original, row['filename'])
         cv2.imwrite(orig_file, orig)
-
-        crop_y = orig.shape[0]
-        crop_x = orig.shape[1]
-        target_w = 256
-        target_h = int((target_w / crop_x) * crop_y)
-
-        resized_256_file = os.path.join(subdir_resized_256, row['filename'])
-        resized_256_image = cv2.resize(orig, (target_w, target_h), interpolation=cv2.INTER_CUBIC)
-        cv2.imwrite(resized_256_file, resized_256_image)
 
     javabridge.kill_vm()

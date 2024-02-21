@@ -67,20 +67,30 @@ else:
     logging.info(f"Skipping run of {PathMESCnn.JSON2EXP}")
 
 if test_classify:
-    net_M = OxfordModelNameCNN.EfficientNet_V2_M
-    net_E = OxfordModelNameCNN.EfficientNet_V2_M
-    net_S = OxfordModelNameCNN.DenseNet161
-    net_C = OxfordModelNameCNN.MobileNet_V2
-    use_vit = False
+    # net_M = OxfordModelNameCNN.EfficientNet_V2_M
+    # net_E = OxfordModelNameCNN.EfficientNet_V2_M
+    # net_S = OxfordModelNameCNN.DenseNet161
+    # net_C = OxfordModelNameCNN.MobileNet_V2
+    # use_vit = False
 
-    use_vit_M = use_vit_E = use_vit_S = use_vit_C = use_vit
-    logging.info(f"Running {PathMESCnn.CLASSIFY} with {net_M}, {net_E}, {net_S}, {net_C}")
+    # use_vit_M = use_vit_E = use_vit_S = use_vit_C = use_vit
+    # logging.info(f"Running {PathMESCnn.CLASSIFY} with {net_M}, {net_E}, {net_S}, {net_C}")
+    # subprocess.run(["python", PathMESCnn.CLASSIFY,
+    #                 "--root-path", ROOT_DIR,
+    #                 "--export-dir", path_to_export,
+    #                 "--netM", net_M, "--vitM", str(use_vit_M),
+    #                 "--netE", net_E, "--vitE", str(use_vit_E),
+    #                 "--netS", net_S, "--vitS", str(use_vit_S),
+    #                 "--netC", net_C, "--vitC", str(use_vit_C)])
+    
+    net_B = "swin_transformer"
+    net_M = "convnext"
+    logging.info(f"Running {PathMESCnn.CLASSIFY} with {net_B}, {net_M}")
     subprocess.run(["python", PathMESCnn.CLASSIFY,
                     "--root-path", ROOT_DIR,
                     "--export-dir", path_to_export,
-                    "--netM", net_M, "--vitM", str(use_vit_M),
-                    "--netE", net_E, "--vitE", str(use_vit_E),
-                    "--netS", net_S, "--vitS", str(use_vit_S),
-                    "--netC", net_C, "--vitC", str(use_vit_C)])
+                    "--netB", net_B,
+                    "--netM", net_M,
+                    "--multi"])
 else:
     logging.info(f"Skipping run of {PathMESCnn.CLASSIFY}")

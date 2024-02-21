@@ -1,64 +1,24 @@
-from torchvision.transforms import transforms, Resize, ToTensor, AutoAugment, AutoAugmentPolicy
+from torchvision.transforms import transforms, ToTensor, Normalize, CenterCrop
 
 
-class Config:
+class GlomeruliTestConfig:
     batch_size = 64
-    learing_rate = 1e-5
-    epochs = 10
+    num_classes = 2
+    aug = False
+    train = False
+    transform = transforms.Compose([
+        CenterCrop(224),
+        Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ToTensor()
+    ])
 
     def __init__(self):
         pass
 
 
-class GlomeruliTrainConfig(Config):
-    batch_size = 8
-    learning_rate = 1e-5
-    epochs = 2
-    momentum = 0.9
+class GlomeruliTestConfig2(GlomeruliTestConfig):
     num_classes = 2
-    aug = False
-    train = True
-    transform = transforms.Compose([
-        ToTensor()
-    ])
 
 
-class GlomeruliTrainConfig3(GlomeruliTrainConfig):
-    num_classes = 3
-
-
-class GlomeruliTrainConfigViT(Config):
-    batch_size = 8
-    learning_rate = 1e-5
-    epochs = 50
-    num_classes = 2
-    aug = False
-    train = True
-    transform = transforms.Compose([
-        Resize(224),
-        AutoAugment(policy=AutoAugmentPolicy.IMAGENET),
-        ToTensor()
-    ])
-
-
-class GlomeruliTestConfigViT(GlomeruliTrainConfigViT):
-    batch_size = 64
-    train = False
-    transform = transforms.Compose([
-        Resize(224),
-        ToTensor()
-    ])
-
-
-class GlomeruliTestConfigViT3(GlomeruliTestConfigViT):
-    num_classes = 3
-
-
-class GlomeruliTestConfig(GlomeruliTrainConfig):
-    batch_size = 64
-    train = False
-
-
-class GlomeruliTestConfig3(GlomeruliTrainConfig3):
-    batch_size = 64
-    train = False
+class GlomeruliTestConfig12(GlomeruliTestConfig):
+    num_classes = 12
